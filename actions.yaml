@@ -7,10 +7,20 @@
 #
 # Learn more about actions at: https://juju.is/docs/sdk/actions
 
-fortune:
+start-consumer:
   description: Returns a pithy phrase.
   params:
-    fail:
-      description: "Fail with this message"
+    consumer-group:
+      description: Consumer group to be used
       type: string
       default: ""
+  required: []
+
+stop-consumer:
+  description: Returns a pithy phrase.
+
+start-producer:
+  description: Returns a pithy phrase.
+
+stop-producer:
+  description: Returns a pithy phrase.

@@ -8,7 +8,15 @@
 # Learn more about config at: https://juju.is/docs/sdk/config
 
 options:
-  thing:
-    default: 🎁
-    description: A thing used by the charm.
+  roles:
+    default: "consumer,producer"
+    description: Which role this app is expected to have.
     type: string
+  topic-name:
+    default: "test-topic"
+    description: Name of the topic to be used.
+    type: string
+  replication-factor:
+    default: 3
+    description: Name of the topic to be used.
+    type: int
