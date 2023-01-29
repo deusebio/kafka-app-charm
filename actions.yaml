@@ -14,6 +14,7 @@ start-consumer:
       description: Consumer group to be used
       type: string
       default: ""
+  required: []
 
 stop-consumer:
   description: Returns a pithy phrase.

@@ -34,7 +34,7 @@ def validate_params(cls: Type[T]):
         @wraps(f)
         def event_wrapper(self: CharmBase, event: ActionEvent):
             try:
-                params = cls(**{key.translate("-", "_"): value for key, value in event.params.items()})
+                params = cls(**{key.replace("-", "_"): value for key, value in event.params.items()})
             except ValidationError as e:
                 params = e
             return f(self, event, params)

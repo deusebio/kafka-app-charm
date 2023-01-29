@@ -10,7 +10,7 @@ summary: |
   This charms allow you to deploy a Kafka app to be integrated with an existing Kafka cluster
 
 series:
-  - focal
+  - jammy
 
 peers:
   app-peers:
@@ -18,4 +18,4 @@ peers:
 
 requires:
   kafka-cluster:
-    interface: kafka-client
+    interface: kafka_client

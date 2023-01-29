@@ -1,11 +1,10 @@
 import json
-from functools import reduce
 from functools import wraps
 from typing import TypeVar, Type, Callable, Optional, Union, MutableMapping
 
 import pydantic
 from ops.charm import CharmBase, RelationEvent
-from ops.model import RelationDataContent, RelationData
+from ops.model import RelationDataContent
 from pydantic import BaseModel, ValidationError
 
 S = TypeVar("S")
@@ -34,10 +33,13 @@ def read(relation_data: MutableMapping[str, str], obj: Type[T]) -> T:
         obj: pydantic class represeting the model to be used for parsing
     """
     return obj(**{
-        field_name: json.loads(relation_data[parsed_key])
+        field_name: (
+            relation_data[parsed_key] if field.type_ in [int, str, float] else json.dumps(relation_data[parsed_key])
+        )
         for field_name, field in obj.__fields__.items()
         if (parsed_key := field_name.replace("_", "-")) in relation_data
-    }, relation_data=relation_data)
+        if relation_data[parsed_key]
+    })
 
 
 def parse_relation_data(app_model: Optional[Type[AppModel]] = None, unit_model: Optional[Type[UnitModel]] = None):
@@ -73,10 +75,16 @@ def parse_relation_data(app_model: Optional[Type[AppModel]] = None, unit_model: 
     return decorator
 
 
-def get_relation_data_as(relation_data: RelationData, model_type: Type[AppModel]) -> Union[AppModel, ValidationError]:
+def get_relation_data_as(
+        provider_data: RelationDataContent,
+        requirer_data: RelationDataContent,
+        model_type: Type[AppModel],
+        logger
+) -> Union[AppModel, ValidationError]:
     try:
-        merged_data = reduce(lambda x, y: x | y, relation_data.values(), {})
-        app_data = read(merged_data, model_type)
+        logger.info(dict(provider_data))
+        logger.info(dict(requirer_data))
+        app_data = read(dict(provider_data) | dict(requirer_data), model_type)
     except pydantic.ValidationError as e:
         app_data = e
     return app_data

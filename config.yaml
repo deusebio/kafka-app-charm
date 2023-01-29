@@ -8,7 +8,7 @@
 # Learn more about config at: https://juju.is/docs/sdk/config
 
 options:
-  app-type:
+  roles:
     default: "consumer,producer"
     description: Which role this app is expected to have.
     type: string
