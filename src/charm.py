@@ -13,13 +13,14 @@ develop a new k8s charm using the Operator Framework:
 """
 import shlex
 import subprocess
+from time import time
 from typing import Optional, Union, Dict
 
 from ops.charm import ActionEvent
 from ops.main import main
 from ops.model import ActiveStatus, StatusBase, BlockedStatus, RelationData
 from pydantic import ValidationError
-from time import time
+
 from charms.config.v0.classes import TypeSafeCharmBase, validate_params
 from charms.config.v0.relations import get_relation_data_as
 from charms.data_platform_libs.v0.data_interfaces import (
@@ -28,8 +29,6 @@ from charms.data_platform_libs.v0.data_interfaces import (
 from charms.logging.v0.classes import WithLogging
 from literals import KAFKA_CLUSTER, PEER
 from models import CharmConfig, KafkaRelationDataBag, AppType, StartConsumerActionParam
-
-
 
 
 class KafkaAppCharm(TypeSafeCharmBase[CharmConfig], WithLogging):
@@ -67,80 +66,63 @@ class KafkaAppCharm(TypeSafeCharmBase[CharmConfig], WithLogging):
             getattr(self.on, "stop_consumer_action"), self._stop_consumer
         )
 
-    # def _start_handler(self, process_type: AppType):
-    @validate_params(StartConsumerActionParam)
-    def _start_consumer(
-            self,
-            event: ActionEvent,
-            params: Optional[Union[StartConsumerActionParam, ValidationError]] = None
-    ):
+    def _start_handler(self, process_type: AppType):
+        @validate_params(StartConsumerActionParam)
+        def _starter_function(
+                self,
+                event: ActionEvent,
+                params: Optional[Union[StartConsumerActionParam, ValidationError]] = None
+        ):
+            if process_type in self.pids.keys():
+                event.fail(f"Cannot run more processes of type {process_type}")
 
-        self.logger.info("here!!!!!")
+            extra_data = params if isinstance(params, StartConsumerActionParam) else None
 
-        if AppType.CONSUMER in self.pids.keys():
-            event.fail(f"Cannot run more processes of type {AppType.CONSUMER}")
+            t0 = int(time())
+            my_cmd = f"{self._build_cmd(process_type, None)}"
+            self.logger.info(my_cmd)
+            process = subprocess.Popen(
+                shlex.split(my_cmd),
+                stdout=open(f"/tmp/{t0}_{process_type.value}.log", "w"),
+                stderr=open(f"/tmp/{t0}_{process_type.value}.err", "w")
+            )
+            self.logger.info(f"Started process with pid: {process.pid}")
+            self.set_pid(process_type, process.pid)
+            event.set_results({"pid": process.pid})
 
-        extra_data = params if isinstance(params, StartConsumerActionParam) else None
+        return _starter_function
 
-        t0 = int(time())
-        my_cmd = f"{self._build_cmd(AppType.CONSUMER, None)} > /tmp/{t0}_{AppType.CONSUMER.value}.log " \
-                 f"2> /tmp/{t0}_{AppType.CONSUMER.value}.err"
+    def _start_consumer(self, event: ActionEvent):
+        return self._start_handler(AppType.CONSUMER)(self, event)
 
-        self.logger.info(my_cmd)
-        process = subprocess.Popen(shlex.split(my_cmd))
-        self.logger.info(f"Started process with pid: {process.pid}")
-        self.set_pid(AppType.CONSUMER, process.pid)
-        event.set_results({"pid": process.pid})
+    def _start_producer(self, event: ActionEvent):
+        return self._start_handler(AppType.PRODUCER)(self, event)
 
-    def _start_producer(
-            self,
-            event: ActionEvent
-    ):
+    def _stop_handler(self, process_type: AppType):
 
-        if AppType.PRODUCER in self.pids.keys():
-            event.fail(f"Cannot run more processes of type {AppType.PRODUCER}")
+        def _stop_function(
+                self,
+                event: ActionEvent,
+        ):
+            if process_type in self.pids.keys():
+                pid = self.pids[process_type]
+                self.logger.info(f"Killing process with pid: {pid}")
+                process = subprocess.Popen(["sudo", "kill", "-9", str(pid)])
+                self.set_pid(process_type, None)
+                event.set_results({"pid": pid})
+            else:
+                event.fail(f"No process running for {process_type.value}")
 
-        t0 = int(time())
-        my_cmd = f"{self._build_cmd(AppType.PRODUCER, None)} > /tmp/{t0}_{AppType.PRODUCER.value}.log " \
-                 f"2> /tmp/{t0}_{AppType.PRODUCER.value}.err"
+        return _stop_function
 
-        self.logger.info(my_cmd)
-        process = subprocess.Popen(shlex.split(my_cmd))
-        self.logger.info(f"Started process with pid: {process.pid}")
-        self.set_pid(AppType.PRODUCER, process.pid)
-        event.set_results({"pid": process.pid})
+    def _stop_producer(self, event: ActionEvent):
+        return self._stop_handler(AppType.PRODUCER)(self, event)
 
-    # def _stop_handler(self, process_type: AppType):
-    def _stop_consumer(
-        self,
-        event: ActionEvent,
-    ):
-        if AppType.CONSUMER in self.pids.keys():
-            pid = self.pids[AppType.CONSUMER]
-            self.logger.info(f"Killing process with pid: {pid}")
-            process = subprocess.Popen(["sudo", "kill", "-9", str(pid)])
-            self.set_pid(AppType.CONSUMER, None)
-            event.set_results({"pid": pid})
-        else:
-            event.fail(f"No process running for {AppType.CONSUMER}")
+    def _stop_consumer(self, event: ActionEvent):
+        return self._stop_handler(AppType.CONSUMER)(self, event)
 
-    def _stop_producer(
-        self,
-        event: ActionEvent,
-    ):
-        if AppType.PRODUCER in self.pids.keys():
-            pid = self.pids[AppType.PRODUCER]
-            self.logger.info(f"Killing process with pid: {pid}")
-            process = subprocess.Popen(["sudo", "kill", "-9", str(pid)])
-            self.set_pid(AppType.PRODUCER, None)
-            event.set_results({"pid": pid})
-        else:
-            event.fail(f"No process running for {AppType.PRODUCER}")
-
-
-    #    return _stop
-
-    def _build_cmd(self, process_type: AppType, extra_data: Optional[StartConsumerActionParam] = None):
+    def _build_cmd(self, process_type: AppType,
+                   extra_data: Optional[StartConsumerActionParam] = None):
         if self.kafka_relation_data.tls != "disabled":
             raise NotImplementedError("Cannot start process with TLS. Not yet implemented.")
 
@@ -161,7 +143,8 @@ class KafkaAppCharm(TypeSafeCharmBase[CharmConfig], WithLogging):
 
     @property
     def kafka_relation_data(self) -> Optional[KafkaRelationDataBag]:
-        parsed = get_relation_data_as(relation.data[relation.app], relation.data[self.app], KafkaRelationDataBag, self.logger) \
+        parsed = get_relation_data_as(relation.data[relation.app], relation.data[self.app],
+                                      KafkaRelationDataBag, self.logger) \
             if (relation := self.model.get_relation(KAFKA_CLUSTER)) else None
 
         if isinstance(parsed, ValidationError):
@@ -208,7 +191,8 @@ class KafkaAppCharm(TypeSafeCharmBase[CharmConfig], WithLogging):
 
     def _on_kafka_topic_created(self, event: TopicCreatedEvent):
         # Event triggered when a topic was created for this application
-        self.logger.info(f"Topic successfully created: {self.config.topic_name} with username: {event.username}")
+        self.logger.info(
+            f"Topic successfully created: {self.config.topic_name} with username: {event.username}")
         self.unit.status = self.get_status()
 
     def _on_config_changed(self, _):
