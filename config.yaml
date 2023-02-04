@@ -20,3 +20,11 @@ options:
     default: 3
     description: Name of the topic to be used.
     type: int
+  consumer-group-prefix:
+    description: Consumer group to be used by default
+    type: string
+  auto-start:
+    default: true
+    description: whether the process is started straight away or need manual triggering
+    type: boolean
+
