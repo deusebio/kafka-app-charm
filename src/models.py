@@ -1,8 +1,9 @@
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from pydantic import BaseModel, validator, ValidationError
 
+from charms.data_platform_libs.v0.data_models import RelationDataModel
 from charms.logging.v0.classes import WithLogging
 
 
@@ -15,6 +16,8 @@ class CharmConfig(BaseModel, WithLogging):
     topic_name: str
     roles: str
     replication_factor: int
+    consumer_group_prefix: Optional[str] = None
+    auto_start: bool
 
     @validator("roles")
     def _role_parser(cls, roles: str):
@@ -34,7 +37,18 @@ class CharmConfig(BaseModel, WithLogging):
 
 
 class StartConsumerActionParam(BaseModel):
-    consumer_group: Optional[str]
+    consumer_group_prefix: Optional[str]
+
+
+class StopProcessActionParam(BaseModel):
+    pids: Optional[str] = None
+
+    @property
+    def pid_list(self) -> List[int]:
+        if self.pids:
+            return [int(value) for value in self.pids.split(",")]
+        else:
+            return []
 
 
 class KafkaRequirerRelationDataBag(BaseModel):
@@ -59,7 +73,7 @@ class KafkaProviderRelationDataBag(BaseModel):
     username: str
     password: str
     endpoints: str
-    consumer_group_prefix: str
+    consumer_group_prefix: Optional[str]
     tls: Optional[str] = None
     tls_ca: Optional[str] = None
 
@@ -72,5 +86,20 @@ class KafkaProviderRelationDataBag(BaseModel):
         return self.endpoints
 
 
-class KafkaRelationDataBag(KafkaProviderRelationDataBag, KafkaRequirerRelationDataBag):
-    pass
+class PeerRelationAppData(RelationDataModel):
+    topic_name: Optional[str] = None
+
+
+class PeerRelationUnitData(RelationDataModel):
+    pids: Dict[AppType, List[int]]
+
+    def add_pid(self, app_type: AppType, pid: int):
+        pids = dict(**self.pids)
+        pids[app_type] = pids.get(app_type, []) + [pid]
+        return type(self)(**self.copy(update={"pids": pids}).dict())
+
+    def remove_pid(self, app_type: AppType, pid: int):
+        pids = dict(**self.pids)
+        pids[app_type] = [_pid for _pid in pids.get(app_type, []) if _pid != pid]
+        return type(self)(**self.copy(update={"pids": pids}).dict())
+

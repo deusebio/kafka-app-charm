@@ -10,7 +10,7 @@
 start-consumer:
   description: Returns a pithy phrase.
   params:
-    consumer-group:
+    consumer-group-prefix:
       description: Consumer group to be used
       type: string
       default: ""
@@ -18,9 +18,19 @@ start-consumer:
 
 stop-consumer:
   description: Returns a pithy phrase.
+  params:
+    pids:
+      description: Consumer group to be used
+      type: string
+  required: [ ]
 
 start-producer:
   description: Returns a pithy phrase.
 
 stop-producer:
   description: Returns a pithy phrase.
+  params:
+    pids:
+      description: Consumer group to be used
+      type: string
+  required: [ ]
