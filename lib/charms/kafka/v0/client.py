@@ -327,8 +327,8 @@ if __name__ == "__main__":
     if args.mongo_uri:
         mongo_client = MongoClient(args.mongo_uri)
 
-        producer_collection = mongo_client[args.topic].create_collection("producer")
-        consumer_collection = mongo_client[args.topic].create_collection("consumer")
+        producer_collection = mongo_client[args.topic].get_collection("producer")
+        consumer_collection = mongo_client[args.topic].get_collection("consumer")
     else:
         producer_collection = None
         consumer_collection = None
@@ -362,11 +362,11 @@ if __name__ == "__main__":
         for i in range(args.num_messages):
             message = {
                 "timestamp": datetime.datetime.now().timestamp(),
-                "hash": uuid.uuid().hex,
+                "_id": uuid.uuid4().hex,
                 "origin": origin,
                 "content": f"Message #{str(i)}"
             }
-            if producer_collection:
+            if producer_collection is not None:
                 producer_collection.insert_one(message)
             subscription.produce_message(message_content=json.dumps(message))
             time.sleep(2)
@@ -375,11 +375,12 @@ if __name__ == "__main__":
         logger.info("--consumer - Starting...")
 
         for message in client.get_topic(args.topic).subscribe(args.consumer_group_prefix):
-            content = json.loads(message)
             logger.info(message)
+            content = json.loads(message.value.decode("utf-8"))
             content["timestamp"] = datetime.datetime.now().timestamp()
             content["destination"] = origin
-            if consumer_collection:
+            content["consumer_group"] = args.consumer_group_prefix
+            if consumer_collection is not None:
                 consumer_collection.insert_one(content)
 
     else:

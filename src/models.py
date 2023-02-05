@@ -79,10 +79,10 @@ class KafkaProviderRelationDataBag(AuthDataBag):
 
 
 class MongoProviderRelationDataBag(AuthDataBag):
-    read_only_endpoints: str
-    replset: str
-    uris: str
-    version: str
+    read_only_endpoints: Optional[str]
+    replset: Optional[str]
+    uris: Optional[str]
+    version: Optional[str]
 
 
 class PeerRelationAppData(RelationDataModel):

@@ -164,7 +164,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
               f"--servers {self.kafka_relation_data.bootstrap_server} " + \
               f"--topic {self.peer_relation.app_data.topic_name} "
 
-        if self.peer_relation.app_data.database_name:
+        if self.peer_relation.app_data.database_name and self.database_relation_data.uris:
             cmd += f" --mongo-uri {self.database_relation_data.uris} "
 
         if process_type == AppType.CONSUMER:
