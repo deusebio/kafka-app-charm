@@ -18,13 +18,12 @@ options:
     type: string
   replication-factor:
     default: 3
-    description: Name of the topic to be used.
+    description: Replication factor for the topic when created
     type: int
   consumer-group-prefix:
     description: Consumer group to be used by default
     type: string
-  auto-start:
-    default: true
-    description: whether the process is started straight away or need manual triggering
-    type: boolean
-
+  partitions:
+    default: 5
+    descriptions: Number of partitions for the topic when created
+    type: int

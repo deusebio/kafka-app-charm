@@ -17,7 +17,7 @@ class CharmConfig(BaseModel, WithLogging):
     roles: str
     replication_factor: int
     consumer_group_prefix: Optional[str] = None
-    auto_start: bool
+    partitions: int
 
     @validator("roles")
     def _role_parser(cls, roles: str):
@@ -36,19 +36,9 @@ class CharmConfig(BaseModel, WithLogging):
         use_enum_values = True  # <--
 
 
-class StartConsumerActionParam(BaseModel):
+class StartConsumerParam(BaseModel):
     consumer_group_prefix: Optional[str]
 
-
-class StopProcessActionParam(BaseModel):
-    pids: Optional[str] = None
-
-    @property
-    def pid_list(self) -> List[int]:
-        if self.pids:
-            return [int(value) for value in self.pids.split(",")]
-        else:
-            return []
 
 
 class KafkaRequirerRelationDataBag(BaseModel):
@@ -91,15 +81,19 @@ class PeerRelationAppData(RelationDataModel):
 
 
 class PeerRelationUnitData(RelationDataModel):
-    pids: Dict[AppType, List[int]]
+    pids: Dict[AppType, int]
 
     def add_pid(self, app_type: AppType, pid: int):
-        pids = dict(**self.pids)
-        pids[app_type] = pids.get(app_type, []) + [pid]
+        pids = self.pids | {app_type: pid}
         return type(self)(**self.copy(update={"pids": pids}).dict())
 
     def remove_pid(self, app_type: AppType, pid: int):
-        pids = dict(**self.pids)
-        pids[app_type] = [_pid for _pid in pids.get(app_type, []) if _pid != pid]
+        if self.pids[app_type] != pid:
+            raise ValueError(f"pid {pid} not associated to process {app_type.value}")
+        pids = {
+            key: value
+            for key, value in self.pids.items()
+            if key != app_type
+        }
         return type(self)(**self.copy(update={"pids": pids}).dict())
 

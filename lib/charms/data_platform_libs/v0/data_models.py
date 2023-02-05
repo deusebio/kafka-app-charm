@@ -237,7 +237,7 @@ def read(relation_data: MutableMapping[str, str], obj: Type[T]) -> T:
         **{
             field_name: (
                 relation_data[parsed_key]
-                if field.type_ in [int, str, float]
+                if field.outer_type_ in [int, str, float]
                 else json.loads(relation_data[parsed_key])
             )
             for field_name, field in obj.__fields__.items()
