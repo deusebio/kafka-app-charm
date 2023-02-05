@@ -7,30 +7,3 @@
 #
 # Learn more about actions at: https://juju.is/docs/sdk/actions
 
-start-consumer:
-  description: Returns a pithy phrase.
-  params:
-    consumer-group-prefix:
-      description: Consumer group to be used
-      type: string
-      default: ""
-  required: []
-
-stop-consumer:
-  description: Returns a pithy phrase.
-  params:
-    pids:
-      description: Consumer group to be used
-      type: string
-  required: [ ]
-
-start-producer:
-  description: Returns a pithy phrase.
-
-stop-producer:
-  description: Returns a pithy phrase.
-  params:
-    pids:
-      description: Consumer group to be used
-      type: string
-  required: [ ]

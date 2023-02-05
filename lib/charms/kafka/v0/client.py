@@ -295,6 +295,11 @@ if __name__ == "__main__":
         help="replcation.factor for created topics",
         type=int,
     )
+    parser.add_argument(
+        "--num-partitions",
+        help="partitions for created topics",
+        type=int,
+    )
     parser.add_argument("--producer", action="store_true", default=False)
     parser.add_argument("--consumer", action="store_true", default=False)
     parser.add_argument("--cafile-path", type=str)
@@ -323,7 +328,7 @@ if __name__ == "__main__":
             subscription = client.create_topic(
                 topic=NewTopic(
                     name=args.topic,
-                    num_partitions=5,
+                    num_partitions=args.num_partitions,
                     replication_factor=args.replication_factor,
                 )
             )
