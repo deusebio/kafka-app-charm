@@ -40,7 +40,6 @@ class StartConsumerParam(BaseModel):
     consumer_group_prefix: Optional[str]
 
 
-
 class KafkaRequirerRelationDataBag(BaseModel):
     topic: str
     extra_user_roles: str
@@ -59,13 +58,16 @@ class KafkaRequirerRelationDataBag(BaseModel):
         return [AppType(value) for value in self.extra_user_roles.split(",")]
 
 
-class KafkaProviderRelationDataBag(BaseModel):
+class AuthDataBag(BaseModel):
+    endpoints: str
     username: str
     password: str
-    endpoints: str
-    consumer_group_prefix: Optional[str]
     tls: Optional[str] = None
     tls_ca: Optional[str] = None
+
+
+class KafkaProviderRelationDataBag(AuthDataBag):
+    consumer_group_prefix: Optional[str]
 
     @property
     def security_protocol(self):
@@ -76,8 +78,16 @@ class KafkaProviderRelationDataBag(BaseModel):
         return self.endpoints
 
 
+class MongoProviderRelationDataBag(AuthDataBag):
+    read_only_endpoints: Optional[str]
+    replset: Optional[str]
+    uris: Optional[str]
+    version: Optional[str]
+
+
 class PeerRelationAppData(RelationDataModel):
     topic_name: Optional[str] = None
+    database_name: Optional[str] = None
 
 
 class PeerRelationUnitData(RelationDataModel):
@@ -96,4 +106,3 @@ class PeerRelationUnitData(RelationDataModel):
             if key != app_type
         }
         return type(self)(**self.copy(update={"pids": pids}).dict())
-

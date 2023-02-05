@@ -73,15 +73,21 @@ def on_kafka_relation_created(self, event: RelationCreatedEvent):
 from __future__ import annotations
 
 import argparse
+import datetime
+import json
 import logging
+import socket
 import sys
 import time
+import uuid
 from functools import cached_property
-from typing import Generator, List, Optional
+from typing import List, Optional
 
 import kafka.errors
 from kafka import KafkaAdminClient, KafkaConsumer, KafkaProducer
 from kafka.admin import NewTopic
+from pymongo import MongoClient
+from pymongo import errors
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -237,9 +243,13 @@ class KafkaSubscription:
             topic_name: the topic to send messages to
             message_content: the content of the message to send
         """
-        item_content = f"Message #{message_content}"
-        self._producer_client.send(self.topic, str.encode(item_content)).get(timeout=60)
-        logger.info(f"Message published to topic={self.topic}, message content: {item_content}")
+        self._producer_client.send(self.topic, str.encode(message_content)).get(timeout=60)
+        logger.info(f"Message published to topic={self.topic}, message content: {message_content}")
+
+
+def get_origin() -> str:
+    hostname = socket.gethostname()
+    return f"{hostname} ({socket.gethostbyname(hostname)})"
 
 
 if __name__ == "__main__":
@@ -305,11 +315,24 @@ if __name__ == "__main__":
     parser.add_argument("--cafile-path", type=str)
     parser.add_argument("--certfile-path", type=str)
     parser.add_argument("--keyfile-path", type=str)
+    parser.add_argument("--mongo-uri", type=str, required=False, default=None)
+    parser.add_argument("--origin", type=str, required=False, default=None)
 
     args = parser.parse_args()
     servers = args.servers.split(",")
     if not args.consumer_group_prefix:
         args.consumer_group_prefix = f"{args.username}-" if args.username else None
+
+    origin = args.origin if args.origin else get_origin()
+
+    if args.mongo_uri:
+        mongo_client = MongoClient(args.mongo_uri)
+
+        producer_collection = mongo_client[args.topic].get_collection("producer")
+        consumer_collection = mongo_client[args.topic].get_collection("consumer")
+    else:
+        producer_collection = None
+        consumer_collection = None
 
     client = KafkaClient(
         servers=servers,
@@ -338,7 +361,15 @@ if __name__ == "__main__":
         logger.info("--producer - Starting...")
 
         for i in range(args.num_messages):
-            subscription.produce_message(message_content=str(i))
+            message = {
+                "timestamp": datetime.datetime.now().timestamp(),
+                "_id": uuid.uuid4().hex,
+                "origin": origin,
+                "content": f"Message #{str(i)}"
+            }
+            if producer_collection is not None:
+                producer_collection.insert_one(message)
+            subscription.produce_message(message_content=json.dumps(message))
             time.sleep(2)
 
     if args.consumer:
@@ -346,6 +377,15 @@ if __name__ == "__main__":
 
         for message in client.get_topic(args.topic).subscribe(args.consumer_group_prefix):
             logger.info(message)
+            content = json.loads(message.value.decode("utf-8"))
+            content["timestamp"] = datetime.datetime.now().timestamp()
+            content["destination"] = origin
+            content["consumer_group"] = args.consumer_group_prefix
+            if consumer_collection is not None:
+                try:
+                    consumer_collection.insert_one(content)
+                except errors.DuplicateKeyError:
+                    logger.error(f"Duplicated key with id: {content['_id']}")
 
     else:
         logger.info("No client type args found. Exiting...")

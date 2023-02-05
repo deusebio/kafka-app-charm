@@ -29,7 +29,7 @@ from charms.data_platform_libs.v0.data_models import TypedCharmBase, get_relatio
 from charms.logging.v0.classes import WithLogging
 from literals import KAFKA_CLUSTER, PEER, DATABASE
 from models import CharmConfig, KafkaProviderRelationDataBag, AppType, StartConsumerParam, \
-    PeerRelationUnitData, PeerRelationAppData
+    PeerRelationUnitData, PeerRelationAppData, MongoProviderRelationDataBag
 
 
 class PeerRelation(WithLogging):
@@ -64,6 +64,15 @@ class PeerRelation(WithLogging):
                 relation_data.data[self.charm.app]
             )
         return topic_name
+
+    def set_database(self, database_name: str) -> str:
+        if (
+                relation_data := self.charm.model.get_relation(self.name)
+        ):
+            self.app_data.copy(update={"database_name": database_name}).write(
+                relation_data.data[self.charm.app]
+            )
+        return database_name
 
     @property
     def unit_data(self) -> PeerRelationUnitData:
@@ -121,7 +130,9 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
             self, relation_name=DATABASE, database_name=self.config.topic_name
         )
         self.framework.observe(self.database.on.database_created, self._on_database_created)
-
+        self.framework.observe(
+            self.on[DATABASE].relation_broken, self._on_database_relation_broken
+        )
 
     def _start_process(self, process_type: AppType,
                        extra_data: Optional[StartConsumerParam]) -> int:
@@ -153,6 +164,9 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
               f"--servers {self.kafka_relation_data.bootstrap_server} " + \
               f"--topic {self.peer_relation.app_data.topic_name} "
 
+        if self.peer_relation.app_data.database_name and self.database_relation_data.uris:
+            cmd += f" --mongo-uri {self.database_relation_data.uris} "
+
         if process_type == AppType.CONSUMER:
             consumer_group = extra_data.consumer_group_prefix \
                 if extra_data and extra_data.consumer_group_prefix \
@@ -160,9 +174,9 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
             return f"{cmd} --consumer --consumer-group-prefix {consumer_group}"
         elif process_type == AppType.PRODUCER:
             return f"{cmd} --producer " + \
-                   f"--replication-factor {self.config.replication_factor} " + \
-                   f"--num-partitions {self.config.partitions} " + \
-                   f"--num-messages 10000"
+                f"--replication-factor {self.config.replication_factor} " + \
+                f"--num-partitions {self.config.partitions} " + \
+                f"--num-messages 10000"
         else:
             raise ValueError(f"process_type value {process_type} not recognised")
 
@@ -177,6 +191,17 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
 
         return parsed if isinstance(parsed, KafkaProviderRelationDataBag) else None
 
+    @property
+    def database_relation_data(self) -> Optional[MongoProviderRelationDataBag]:
+        parsed = get_relation_data_as(
+            MongoProviderRelationDataBag, relation.data[relation.app],
+        ) if (relation := self.model.get_relation(DATABASE)) else None
+
+        if isinstance(parsed, ValidationError):
+            self.logger.error(f"There was a problem to read {DATABASE} databag: {parsed}")
+
+        return parsed if isinstance(parsed, MongoProviderRelationDataBag) else None
+
     def get_status(self) -> StatusBase:
         if self.peer_relation.app_data.topic_name:
             if self.peer_relation.app_data.topic_name == self.config.topic_name:
@@ -189,7 +214,18 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
             return BlockedStatus("Relations with a Kafka cluster should be created")
 
     def _on_database_created(self, event: DatabaseCreatedEvent):
-        pass
+        self.logger.info(
+            f"Database successfully created: {self.config.topic_name} with username: {event.username}")
+
+        if self.unit.is_leader():
+            self.peer_relation.set_database(self.config.topic_name)
+
+        if not self.peer_relation.app_data.topic_name:
+            event.defer()
+
+    def _on_database_relation_broken(self, event: RelationBrokenEvent):
+        if self.unit.is_leader():
+            self.peer_relation.set_database("")
 
     def _on_kafka_bootstrap_server_changed(self, event: BootstrapServerChangedEvent):
         # Event triggered when a bootstrap server was changed for this application

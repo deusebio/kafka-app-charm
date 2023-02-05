@@ -19,3 +19,5 @@ peers:
 requires:
   kafka-cluster:
     interface: kafka_client
+  database:
+    interface: mongodb_client
