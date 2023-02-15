@@ -87,6 +87,7 @@ import kafka.errors
 from kafka import KafkaAdminClient, KafkaConsumer, KafkaProducer
 from kafka.admin import NewTopic
 from pymongo import MongoClient
+from pymongo import errors
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -381,7 +382,10 @@ if __name__ == "__main__":
             content["destination"] = origin
             content["consumer_group"] = args.consumer_group_prefix
             if consumer_collection is not None:
-                consumer_collection.insert_one(content)
+                try:
+                    consumer_collection.insert_one(content)
+                except errors.DuplicateKeyError:
+                    logger.error(f"Duplicated key with id: {content['_id']}")
 
     else:
         logger.info("No client type args found. Exiting...")
