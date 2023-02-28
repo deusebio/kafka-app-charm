@@ -245,10 +245,9 @@ class KafkaClient:
             topic_name: the topic to send messages to
             message_content: the content of the message to send
         """
-        item_content = f"Message #{message_content}"
-        future = self._producer_client.send(topic_name, str.encode(item_content))
+        future = self._producer_client.send(topic_name, str.encode(message_content))
         future.get(timeout=60)
-        logger.info(f"Message published to topic={topic_name}, message content: {item_content}")
+        logger.info(f"Message published to topic={topic_name}, message content: {message_content}")
 
 
 def get_origin() -> str:
