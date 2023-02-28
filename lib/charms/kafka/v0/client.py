@@ -262,7 +262,7 @@ def retrying(value_assigner: Callable[[], T], exception: Type[Exception], max_re
     value = None
     while not value:
         try:
-            value = value_assigner
+            value = value_assigner()
         except exception as e:
             if counter == max_retries:
                 raise e
