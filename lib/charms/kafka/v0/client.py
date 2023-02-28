@@ -81,7 +81,7 @@ import sys
 import time
 import uuid
 from functools import cached_property
-from typing import Generator, List, Optional
+from typing import Generator, List, Optional, Callable, TypeVar, Type
 
 from kafka import KafkaAdminClient, KafkaConsumer, KafkaProducer
 from kafka.admin import NewTopic
@@ -101,6 +101,8 @@ LIBAPI = 0
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
 LIBPATCH = 1
+
+T = TypeVar("T")
 
 
 class KafkaClient:
@@ -255,6 +257,21 @@ def get_origin() -> str:
     return f"{hostname} ({socket.gethostbyname(hostname)})"
 
 
+def retrying(value_assigner: Callable[[], T], exception: Type[Exception], max_retries=10) -> T:
+    counter = 0
+    value = None
+    while not value:
+        try:
+            value = value_assigner
+        except exception as e:
+            if counter == max_retries:
+                raise e
+            counter += 1
+            logger.error(f"Exception {e} raised. Retrying {counter} in 2 seconds...")
+            time.sleep(2)
+    return value
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Handler for running a Kafka client")
     parser.add_argument(
@@ -337,17 +354,20 @@ if __name__ == "__main__":
         producer_collection = None
         consumer_collection = None
 
-    client = KafkaClient(
-        servers=servers,
-        username=args.username,
-        password=args.password,
-        security_protocol=args.security_protocol,
-        cafile_path=args.cafile_path,
-        certfile_path=args.certfile_path,
-        keyfile_path=args.keyfile_path,
+    client = retrying(
+        lambda: KafkaClient(
+            servers=servers,
+            username=args.username,
+            password=args.password,
+            security_protocol=args.security_protocol,
+            cafile_path=args.cafile_path,
+            certfile_path=args.certfile_path,
+            keyfile_path=args.keyfile_path,
+        ),
+        Exception
     )
 
-    if args.producer:
+    if client and args.producer:
         logger.info(f"Creating new topic - {args.topic}")
 
         topic = NewTopic(
@@ -356,9 +376,11 @@ if __name__ == "__main__":
             replication_factor=args.replication_factor,
         )
         try:
-            client.create_topic(topic=topic)
+            retrying(lambda: client.create_topic(topic=topic), AssertionError)
         except TopicAlreadyExistsError:
-            pass
+            logger.info("Topic already exists")
+
+        time.sleep(2)
 
         logger.info("--producer - Starting...")
 
