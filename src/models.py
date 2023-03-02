@@ -1,10 +1,9 @@
 from enum import Enum
-from typing import List, Optional, Dict
-
-from pydantic import BaseModel, validator, ValidationError
+from typing import Dict, List, Optional
 
 from charms.data_platform_libs.v0.data_models import RelationDataModel
 from charms.logging.v0.classes import WithLogging
+from pydantic import BaseModel, ValidationError, validator
 
 
 class AppType(str, Enum):

@@ -16,20 +16,29 @@ import subprocess
 from time import time
 from typing import Optional
 
-from ops.charm import RelationBrokenEvent
-from ops.main import main
-from ops.model import ActiveStatus, StatusBase, BlockedStatus
-from pydantic import ValidationError
-
 from charms.data_platform_libs.v0.data_interfaces import (
-    KafkaRequires, BootstrapServerChangedEvent, TopicCreatedEvent,
-    DatabaseRequires, DatabaseCreatedEvent
+    BootstrapServerChangedEvent,
+    DatabaseCreatedEvent,
+    DatabaseRequires,
+    KafkaRequires,
+    TopicCreatedEvent,
 )
 from charms.data_platform_libs.v0.data_models import TypedCharmBase, get_relation_data_as
 from charms.logging.v0.classes import WithLogging
-from literals import KAFKA_CLUSTER, PEER, DATABASE
-from models import CharmConfig, KafkaProviderRelationDataBag, AppType, StartConsumerParam, \
-    PeerRelationUnitData, PeerRelationAppData, MongoProviderRelationDataBag
+from literals import DATABASE, KAFKA_CLUSTER, PEER
+from models import (
+    AppType,
+    CharmConfig,
+    KafkaProviderRelationDataBag,
+    MongoProviderRelationDataBag,
+    PeerRelationAppData,
+    PeerRelationUnitData,
+    StartConsumerParam,
+)
+from ops.charm import RelationBrokenEvent
+from ops.main import main
+from ops.model import ActiveStatus, BlockedStatus, StatusBase
+from pydantic import ValidationError
 
 
 class PeerRelation(WithLogging):
@@ -134,6 +143,12 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
             self.on[DATABASE].relation_broken, self._on_database_relation_broken
         )
 
+        self.framework.observe(self.on["certificates"].relation_joined, self._tls_relation_joined)
+        self.framework.observe(
+            self.certificates.on.certificate_available, self._on_certificate_available
+        )
+
+    # remove this logic and use threads
     def _start_process(self, process_type: AppType,
                        extra_data: Optional[StartConsumerParam]) -> int:
         t0 = int(time())
@@ -149,7 +164,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
 
     def _stop_process(self, process_type: AppType, pid: int):
         self.logger.info(f"Killing process with pid: {pid}")
-        process = subprocess.Popen(["sudo", "kill", "-9", str(pid)])
+        subprocess.Popen(["sudo", "kill", "-9", str(pid)])
         self.peer_relation.remove_pid(process_type, pid)
         return pid
 
@@ -176,7 +191,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
             return f"{cmd} --producer " + \
                 f"--replication-factor {self.config.replication_factor} " + \
                 f"--num-partitions {self.config.partitions} " + \
-                f"--num-messages 10000"
+                "--num-messages 10000"
         else:
             raise ValueError(f"process_type value {process_type} not recognised")
 
