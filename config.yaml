@@ -1,29 +1,27 @@
-# Copyright 2022 Canonical Ltd.
+# Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
-#
-# TEMPLATE-TODO: change this example to suit your needs.
-# If you don't need a config, you can remove the file entirely.
-# It ties in to the example _on_config_changed handler in src/charm.py
-#
-# Learn more about config at: https://juju.is/docs/sdk/config
 
 options:
-  roles:
-    default: "consumer,producer"
+  role:
+    default: "consumer"
     description: Which role this app is expected to have.
     type: string
-  topic-name:
+  topic_name:
     default: "test-topic"
     description: Name of the topic to be used.
     type: string
-  replication-factor:
+  replication_factor:
     default: 3
     description: Replication factor for the topic when created
     type: int
-  consumer-group-prefix:
+  consumer_group_prefix:
     description: Consumer group to be used by default
     type: string
   partitions:
     default: 5
     descriptions: Number of partitions for the topic when created
+    type: int
+  num_messages:
+    default: 1000
+    descriptions: Number of messages.
     type: int

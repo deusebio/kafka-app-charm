@@ -21,3 +21,6 @@ requires:
     interface: kafka_client
   database:
     interface: mongodb_client
+  certificates:
+    interface: tls-certificates
+    limit: 1

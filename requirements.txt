@@ -2,3 +2,6 @@ ops >= 2.0.0
 pydantic >= 1.10
 kafka-python >= 2.0
 pymongo >= 4.3.3
+cffi==1.15.1
+cryptography==39.0.1
+jsonschema

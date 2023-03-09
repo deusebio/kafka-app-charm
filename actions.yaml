@@ -1,9 +1,27 @@
-# Copyright 2022 Canonical Ltd.
+# Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
-#
-# TEMPLATE-TODO: change this example to suit your needs.
-# If you don't need actions, you can remove the file entirely.
-# It ties in to the example _on_fortune_action handler in src/charm.py
-#
-# Learn more about actions at: https://juju.is/docs/sdk/actions
+
+start-process:
+  description: Start the producer or consumer based on the defined role.
+  params:
+    servers:
+      type: string
+      description: "The bootstrap servers endpoints."
+    username:
+      type: string
+      description: "The username for the authentication with Kafka."
+    password:
+      type: string
+      description: "The password for the authentication with Kafka."
+    topic_name:
+      type: string
+      description: "The desired topic."
+    consumer_group_prefix:
+      type: string
+      description: "The desired consumer group prefix"
+  required: [servers, username, password, topic_name]
+    
+stop-process:
+  description: Stop the producer or consumer process.
+
 
