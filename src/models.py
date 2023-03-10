@@ -36,12 +36,12 @@ class CharmConfig(BaseModel, WithLogging):
             _app_type = AppType(value)
         except Exception as e:
             raise ValidationError(f"could not properly parsed the roles configuration: {e}")
-        return value
+        return AppType(value)
 
     @property
     def app_type(self) -> AppType:
         """Return the Kafka app type (producer or consumer)."""
-        return self.role
+        return AppType(self.role)
 
     # class Config:
     #     use_enum_values = True  # <--

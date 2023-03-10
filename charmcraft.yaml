@@ -2,6 +2,15 @@
 # See LICENSE file for licensing details.
 
 type: charm
+parts:
+  charm:
+    charm-binary-python-packages:
+      - setuptools
+    build-packages:
+      - libffi-dev
+      - libssl-dev
+      - rustc
+      - cargo
 bases:
   - build-on:
       - name: "ubuntu"

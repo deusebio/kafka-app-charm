@@ -11,7 +11,7 @@ options:
     description: Name of the topic to be used.
     type: string
   replication_factor:
-    default: 3
+    default: 1
     description: Replication factor for the topic when created
     type: int
   consumer_group_prefix:

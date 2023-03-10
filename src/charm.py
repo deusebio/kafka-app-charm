@@ -144,7 +144,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
             self,
             relation_name=KAFKA_CLUSTER,
             topic=self.config.topic_name,
-            extra_user_roles=self.config.app_type,
+            extra_user_roles=self.config.app_type.value,
         )
         self.framework.observe(
             self.kafka_cluster.on.bootstrap_server_changed, self._on_kafka_bootstrap_server_changed
@@ -219,6 +219,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
             event.fail(f"Process id {self.peer_relation.unit_data.pid} already running!")
 
         app_type = self.config.app_type
+        self.logger.info(f"app: {app_type} : {type(app_type)}")
         username = event.params["username"]
         password = event.params["password"]
         servers = event.params["servers"]
@@ -309,7 +310,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
         )
 
         if self.peer_relation.app_data.database_name and self.database_relation_data.uris:
-            cmd += f" --mongo-uri {self.database_relation_data.uris} "
+            cmd += f" --mongo-uri '{self.database_relation_data.uris}' "
 
         if tls == "enabled" and self.peer_relation.app_data.private_key:
             assert cafile_path
@@ -369,7 +370,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
             if self.peer_relation.app_data.topic_name == self.config.topic_name:
                 return ActiveStatus(
                     f"Topic {self.config.topic_name} enabled "
-                    f"with processes {', '.join(self.config.app_type)}"
+                    f"with process {self.config.app_type.value}"
                 )
             else:
                 return BlockedStatus(
@@ -423,7 +424,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
         servers = self.kafka_relation_data.bootstrap_server
         topic = self.peer_relation.app_data.topic_name
         consumer_group_prefix = self.config.consumer_group_prefix
-
+        self.logger.info(f"app: {app_type} : {type(app_type)}")
         pid = self._start_process(
             process_type=app_type,
             username=username,

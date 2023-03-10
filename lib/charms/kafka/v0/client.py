@@ -393,6 +393,7 @@ if __name__ == "__main__":
             }
             if producer_collection is not None:
                 producer_collection.insert_one(message)
+                logger.info(f"insert message in collection")
             client.produce_message(
                 topic_name=args.topic, message_content=json.dumps(message)
             )
