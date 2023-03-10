@@ -81,13 +81,13 @@ import sys
 import time
 import uuid
 from functools import cached_property
-from typing import List, Optional
+from typing import Generator, List, Optional, Callable, TypeVar, Type
 
-import kafka.errors
 from kafka import KafkaAdminClient, KafkaConsumer, KafkaProducer
 from kafka.admin import NewTopic
+from kafka.errors import TopicAlreadyExistsError
 from pymongo import MongoClient
-from pymongo import errors
+from pymongo.errors import DuplicateKeyError
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -101,6 +101,8 @@ LIBAPI = 0
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
 LIBPATCH = 1
+
+T = TypeVar("T")
 
 
 class KafkaClient:
@@ -132,6 +134,8 @@ class KafkaClient:
         self.ssl = "SSL" in self.security_protocol
         self.mtls = self.security_protocol == "SSL"
 
+        self._subscription = None
+
     @cached_property
     def _admin_client(self) -> KafkaAdminClient:
         """Initialises and caches a `KafkaAdminClient`."""
@@ -149,7 +153,8 @@ class KafkaClient:
             api_version=KafkaClient.API_VERSION if self.mtls else None,
         )
 
-    def get_producer(self) -> KafkaProducer:
+    @cached_property
+    def _producer_client(self) -> KafkaProducer:
         """Initialises and caches a `KafkaProducer`."""
         return KafkaProducer(
             bootstrap_servers=self.servers,
@@ -164,7 +169,8 @@ class KafkaClient:
             api_version=KafkaClient.API_VERSION if self.mtls else None,
         )
 
-    def get_consumer(self, consumer_group_prefix: str) -> KafkaConsumer:
+    @cached_property
+    def _consumer_client(self) -> KafkaConsumer:
         """Initialises and caches a `KafkaConsumer`."""
         return KafkaConsumer(
             bootstrap_servers=self.servers,
@@ -177,13 +183,13 @@ class KafkaClient:
             ssl_certfile=self.certfile_path if self.ssl else None,
             ssl_keyfile=self.keyfile_path if self.mtls else None,
             api_version=KafkaClient.API_VERSION if self.mtls else None,
-            group_id=consumer_group_prefix,
+            group_id=self._consumer_group_prefix or None,
             enable_auto_commit=True,
             auto_offset_reset="earliest",
             consumer_timeout_ms=15000,
         )
 
-    def create_topic(self, topic: NewTopic) -> KafkaSubscription:
+    def create_topic(self, topic: NewTopic) -> None:
         """Creates a new topic on the Kafka cluster.
 
         Requires `KafkaClient` username to have `TOPIC CREATE` ACL permissions
@@ -194,20 +200,9 @@ class KafkaClient:
 
         """
         self._admin_client.create_topics(new_topics=[topic], validate_only=False)
-        return KafkaSubscription(topic.name, self)
 
-    def get_topic(self, topic: str) -> KafkaSubscription:
-        return KafkaSubscription(topic, self)
-
-
-class KafkaSubscription:
-
-    def __init__(self, topic: str, client: KafkaClient):
-        self.topic = topic
-        self.client = client
-
-    def subscribe(
-            self, consumer_group_prefix: Optional[str] = None
+    def subscribe_to_topic(
+            self, topic_name: str, consumer_group_prefix: Optional[str] = None
     ) -> None:
         """Subscribes client to a specific topic, called when wishing to run a Consumer client.
 
@@ -220,20 +215,29 @@ class KafkaSubscription:
             topic_name: the topic to subscribe to
             consumer_group_prefix: (optional) the consumer group_id prefix to join
         """
-        _consumer_group_prefix = (
-
-        )
-        consumer = self.client.get_consumer(
+        self._consumer_group_prefix = (
             consumer_group_prefix + "1" if consumer_group_prefix else None
         )
-        consumer.subscribe(topics=[self.topic])
-        yield from consumer
+        self._subscription = topic_name
+        self._consumer_client.subscribe(topics=[topic_name])
 
-    @cached_property
-    def _producer_client(self):
-        return self.client.get_producer()
+    def messages(self) -> Generator:
+        """Iterable of consumer messages.
 
-    def produce_message(self, message_content: str) -> None:
+        Returns:
+            Generator of messages
+
+        Raises:
+            AttributeError: if topic not yet subscribed to
+        """
+        if not self._subscription:
+            msg = "Client not yet subscribed to a topic, cannot provide messages"
+            logger.error(msg)
+            raise AttributeError(msg)
+
+        yield from self._consumer_client
+
+    def produce_message(self, topic_name: str, message_content: str) -> None:
         """Sends message to target topic on the cluster.
 
         Requires `KafkaClient` username to have `TOPIC WRITE` ACL permissions
@@ -243,13 +247,29 @@ class KafkaSubscription:
             topic_name: the topic to send messages to
             message_content: the content of the message to send
         """
-        self._producer_client.send(self.topic, str.encode(message_content)).get(timeout=60)
-        logger.info(f"Message published to topic={self.topic}, message content: {message_content}")
+        future = self._producer_client.send(topic_name, str.encode(message_content))
+        future.get(timeout=60)
+        logger.info(f"Message published to topic={topic_name}, message content: {message_content}")
 
 
 def get_origin() -> str:
     hostname = socket.gethostname()
     return f"{hostname} ({socket.gethostbyname(hostname)})"
+
+
+def retrying(value_assigner: Callable[[], T], exception: Type[Exception], max_retries=10) -> T:
+    counter = 0
+    value = None
+    while not value:
+        try:
+            value = value_assigner()
+        except exception as e:
+            if counter == max_retries:
+                raise e
+            counter += 1
+            logger.error(f"Exception {e} raised. Retrying {counter} in 2 seconds...")
+            time.sleep(2)
+    return value
 
 
 if __name__ == "__main__":
@@ -334,29 +354,33 @@ if __name__ == "__main__":
         producer_collection = None
         consumer_collection = None
 
-    client = KafkaClient(
-        servers=servers,
-        username=args.username,
-        password=args.password,
-        security_protocol=args.security_protocol,
-        cafile_path=args.cafile_path,
-        certfile_path=args.certfile_path,
-        keyfile_path=args.keyfile_path,
+    client = retrying(
+        lambda: KafkaClient(
+            servers=servers,
+            username=args.username,
+            password=args.password,
+            security_protocol=args.security_protocol,
+            cafile_path=args.cafile_path,
+            certfile_path=args.certfile_path,
+            keyfile_path=args.keyfile_path,
+        ),
+        Exception
     )
 
-    if args.producer:
+    if client and args.producer:
         logger.info(f"Creating new topic - {args.topic}")
 
+        topic = NewTopic(
+            name=args.topic,
+            num_partitions=args.num_partitions,
+            replication_factor=args.replication_factor,
+        )
         try:
-            subscription = client.create_topic(
-                topic=NewTopic(
-                    name=args.topic,
-                    num_partitions=args.num_partitions,
-                    replication_factor=args.replication_factor,
-                )
-            )
-        except kafka.errors.TopicAlreadyExistsError:
-            subscription = client.get_topic(args.topic)
+            retrying(lambda: client.create_topic(topic=topic), AssertionError)
+        except TopicAlreadyExistsError:
+            logger.info("Topic already exists")
+
+        time.sleep(2)
 
         logger.info("--producer - Starting...")
 
@@ -369,13 +393,17 @@ if __name__ == "__main__":
             }
             if producer_collection is not None:
                 producer_collection.insert_one(message)
-            subscription.produce_message(message_content=json.dumps(message))
+            client.produce_message(
+                topic_name=args.topic, message_content=json.dumps(message)
+            )
             time.sleep(2)
 
     if args.consumer:
         logger.info("--consumer - Starting...")
-
-        for message in client.get_topic(args.topic).subscribe(args.consumer_group_prefix):
+        client.subscribe_to_topic(
+            topic_name=args.topic, consumer_group_prefix=args.consumer_group_prefix
+        )
+        for message in client.messages():
             logger.info(message)
             content = json.loads(message.value.decode("utf-8"))
             content["timestamp"] = datetime.datetime.now().timestamp()
@@ -384,7 +412,7 @@ if __name__ == "__main__":
             if consumer_collection is not None:
                 try:
                     consumer_collection.insert_one(content)
-                except errors.DuplicateKeyError:
+                except DuplicateKeyError:
                     logger.error(f"Duplicated key with id: {content['_id']}")
 
     else:

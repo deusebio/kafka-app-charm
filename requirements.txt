@@ -1,4 +1,4 @@
-ops <= 1.5.4
+ops >= 2.0.0
 pydantic >= 1.10
 kafka-python >= 2.0
 pymongo >= 4.3.3
