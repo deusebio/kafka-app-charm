@@ -118,6 +118,17 @@ async def test_producer_and_consumer_charms(ops_test: OpsTest, kafka_app_charm):
 async def test_deploy_mongodb_and_relate(ops_test: OpsTest, kafka_app_charm):
     """Deploy mongoDB, relate it with the kafka-app and dump messages."""
 
+    # clean topic
+
+    consumer_config = {"role":"consumer", "num_messages": "20", "topic_name": "topic_1"}
+    producer_config = {"role":"producer", "num_messages": "20", "topic_name": "topic_1"}
+
+    await ops_test.model.applications[PRODUCER].set_config(producer_config)
+    await ops_test.model.wait_for_idle(apps=[PRODUCER])
+
+    await ops_test.model.applications[CONSUMER].set_config(consumer_config)
+    await ops_test.model.wait_for_idle(apps=[CONSUMER])
+
     await asyncio.gather(
         ops_test.model.deploy(
             MONGODB,
@@ -160,12 +171,9 @@ async def test_deploy_mongodb_and_relate(ops_test: OpsTest, kafka_app_charm):
         db = client[topic_name]
         consumer_collection = db["consumer"]
         producer_collection = db["producer"]
-
-        
+   
         logger.info(f"Number of messages from consumer: {consumer_collection.count_documents({})}")
         logger.info(f"Number of messages from producer: {producer_collection.count_documents({})}")
-        logger.info("Sleep....... 10000")
-        time.sleep(10000)
         assert consumer_collection.count_documents({}) > 0
         assert producer_collection.count_documents({}) > 0
         assert consumer_collection.count_documents({}) == producer_collection.count_documents({})
@@ -237,6 +245,22 @@ async def test_tls(ops_test: OpsTest, kafka_app_charm):
     assert ops_test.model.applications[CONSUMER].status == "active"
 
 
+    consumer_config = {"role":"consumer", "num_messages": "20", "topic_name": "topic_2"}
+    producer_config = {"role":"producer", "num_messages": "20", "topic_name": "topic_2"}
+
+    await ops_test.model.applications[PRODUCER].set_config(producer_config)
+    await ops_test.model.wait_for_idle(apps=[PRODUCER])
+
+    await ops_test.model.applications[CONSUMER].set_config(consumer_config)
+    await ops_test.model.wait_for_idle(apps=[CONSUMER])
+    
+    # relate to mongodb
+    await ops_test.model.wait_for_idle(apps=[MONGODB], timeout=1000, status="active")
+    await ops_test.model.add_relation(MONGODB, PRODUCER)
+    await ops_test.model.wait_for_idle(apps=[MONGODB, PRODUCER])
+    await ops_test.model.add_relation(MONGODB, CONSUMER)
+    await ops_test.model.wait_for_idle(apps=[MONGODB, CONSUMER])
+
     # relate producer and consumer
     await ops_test.model.add_relation(KAFKA, PRODUCER)
     await ops_test.model.wait_for_idle(apps=[KAFKA, PRODUCER])
@@ -245,6 +269,35 @@ async def test_tls(ops_test: OpsTest, kafka_app_charm):
     await ops_test.model.wait_for_idle(apps=[KAFKA, CONSUMER])
 
     time.sleep(60)
+    # Check messages in mongodb
+    mongodb_data = get_kafka_app_database_relation_data(unit_name=f"{PRODUCER}/0", model_full_name=ops_test.model_full_name)
+    uris = mongodb_data["uris"]
+    topic_name = mongodb_data["database"]
+    logger.info(f"MongoDB uris: {uris}")
+    logger.info(f"Topic: {topic_name}")
+    try:
+        client = MongoClient(
+            uris,
+            directConnection=False,
+            connect=False,
+            serverSelectionTimeoutMS=1000,
+            connectTimeoutMS=2000,
+        )
+        db = client[topic_name]
+        consumer_collection = db["consumer"]
+        producer_collection = db["producer"]
+
+        
+        logger.info(f"Number of messages from consumer: {consumer_collection.count_documents({})}")
+        logger.info(f"Number of messages from producer: {producer_collection.count_documents({})}")
+        assert consumer_collection.count_documents({}) > 0
+        assert producer_collection.count_documents({}) > 0
+        assert consumer_collection.count_documents({}) == producer_collection.count_documents({})
+
+        client.close()
+    except Exception as e:
+        logger.error("Cannot connect to MongoDB collection.")
+        raise e
 
     await ops_test.model.applications[KAFKA].remove_relation(
         f"{PRODUCER}:kafka-cluster", f"{KAFKA}:kafka-client"

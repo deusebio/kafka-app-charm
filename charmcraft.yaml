@@ -11,6 +11,7 @@ parts:
       - libssl-dev
       - rustc
       - cargo
+      - cmake
 bases:
   - build-on:
       - name: "ubuntu"

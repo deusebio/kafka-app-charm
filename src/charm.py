@@ -294,9 +294,6 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
         keyfile_path: Optional[str] = None,
     ):
         """Handle the creation of the command to launch producer or consumer."""
-        if self.kafka_relation_data.tls != "disabled":
-            raise NotImplementedError("Cannot start process with TLS. Not yet implemented.")
-
         if tls == "enabled" and self.peer_relation.app_data.private_key:
             self.logger.info(f"TLS enabled -> bootstrap servers: {servers}")
             servers = servers.replace("9092", "9093")
@@ -423,7 +420,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
         password = self.kafka_relation_data.password
         servers = self.kafka_relation_data.bootstrap_server
         topic = self.peer_relation.app_data.topic_name
-        consumer_group_prefix = self.config.consumer_group_prefix
+        consumer_group_prefix = self.kafka_relation_data.consumer_group_prefix or self.config.consumer_group_prefix
         self.logger.info(f"app: {app_type} : {type(app_type)}")
         pid = self._start_process(
             process_type=app_type,
