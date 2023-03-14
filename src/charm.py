@@ -26,6 +26,12 @@ from charms.tls_certificates_interface.v1.tls_certificates import (
     generate_csr,
     generate_private_key,
 )
+from ops.charm import ActionEvent, RelationBrokenEvent
+from ops.framework import EventBase
+from ops.main import main
+from ops.model import ActiveStatus, BlockedStatus, StatusBase
+from pydantic import ValidationError
+
 from literals import (
     CA_FILE_PATH,
     CERT_FILE_PATH,
@@ -43,11 +49,6 @@ from models import (
     PeerRelationAppData,
     PeerRelationUnitData,
 )
-from ops.charm import ActionEvent, RelationBrokenEvent
-from ops.framework import EventBase
-from ops.main import main
-from ops.model import ActiveStatus, BlockedStatus, StatusBase
-from pydantic import ValidationError
 
 
 class PeerRelation(WithLogging):
@@ -224,7 +225,9 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
         password = event.params["password"]
         servers = event.params["servers"]
         topic = event.params["topic_name"]
-        consumer_group_prefix = event.params["consumer_group_prefix"]
+        consumer_group_prefix = None
+        if "consumer_group_prefix" in event.params:
+            consumer_group_prefix = event.params["consumer_group_prefix"]
 
         pid = self._start_process(
             process_type=app_type,
@@ -420,7 +423,9 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
         password = self.kafka_relation_data.password
         servers = self.kafka_relation_data.bootstrap_server
         topic = self.peer_relation.app_data.topic_name
-        consumer_group_prefix = self.kafka_relation_data.consumer_group_prefix or self.config.consumer_group_prefix
+        consumer_group_prefix = (
+            self.kafka_relation_data.consumer_group_prefix or self.config.consumer_group_prefix
+        )
         self.logger.info(f"app: {app_type} : {type(app_type)}")
         pid = self._start_process(
             process_type=app_type,

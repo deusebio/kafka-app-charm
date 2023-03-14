@@ -1,9 +1,10 @@
 import unittest
 
+from ops.testing import Harness
+
 from charm import KafkaAppCharm
 from literals import PEER
 from models import CharmConfig
-from ops.testing import Harness
 
 
 class TestCharm(unittest.TestCase):
