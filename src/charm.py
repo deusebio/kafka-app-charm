@@ -5,6 +5,7 @@
 """Charmed Kafka App for testing the Kafka Charmed Operator."""
 
 
+import logging
 import os
 import shlex
 import subprocess
@@ -19,7 +20,6 @@ from charms.data_platform_libs.v0.data_interfaces import (
     TopicCreatedEvent,
 )
 from charms.data_platform_libs.v0.data_models import TypedCharmBase, get_relation_data_as
-from charms.logging.v0.classes import WithLogging
 from charms.tls_certificates_interface.v1.tls_certificates import (
     CertificateAvailableEvent,
     TLSCertificatesRequiresV1,
@@ -50,8 +50,10 @@ from models import (
     PeerRelationUnitData,
 )
 
+logger = logging.getLogger(__name__)
 
-class PeerRelation(WithLogging):
+
+class PeerRelation:
     """Peer relation model."""
 
     def __init__(self, charm: "KafkaAppCharm", name: str = PEER):
@@ -104,7 +106,7 @@ class PeerRelation(WithLogging):
         )
 
         if isinstance(parsed, ValidationError):
-            self.logger.error(f"There was a problem to read {self.name} databag: {parsed}")
+            logger.error(f"There was a problem to read {self.name} databag: {parsed}")
 
         return parsed if isinstance(parsed, PeerRelationUnitData) else PeerRelationUnitData()
 
@@ -118,7 +120,7 @@ class PeerRelation(WithLogging):
         )
 
         if isinstance(parsed, ValidationError):
-            self.logger.error(f"There was a problem to read {self.name} databag: {parsed}")
+            logger.error(f"There was a problem to read {self.name} databag: {parsed}")
 
         return (
             parsed
@@ -127,7 +129,7 @@ class PeerRelation(WithLogging):
         )
 
 
-class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
+class KafkaAppCharm(TypedCharmBase[CharmConfig]):
     """Charm the service."""
 
     config_type = CharmConfig
@@ -220,7 +222,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
             event.fail(f"Process id {self.peer_relation.unit_data.pid} already running!")
 
         app_type = self.config.app_type
-        self.logger.info(f"app: {app_type} : {type(app_type)}")
+        logger.info(f"app: {app_type} : {type(app_type)}")
         username = event.params["username"]
         password = event.params["password"]
         servers = event.params["servers"]
@@ -267,7 +269,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
         """Handle the start of the process for consumption or production of messagges."""
         t0 = int(time())
         my_cmd = f"{self._build_cmd(process_type, username, password, servers, topic, consumer_group_prefix, tls, cafile_path, certfile_path, keyfile_path)}"
-        self.logger.info(my_cmd)
+        logger.info(my_cmd)
         process = subprocess.Popen(
             shlex.split(my_cmd),
             stdout=open(f"/tmp/{t0}_{process_type.value}.log", "w"),
@@ -278,7 +280,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
 
     def _stop_process(self, pid: int):
         """Handle the stop of the producer/consumer process."""
-        self.logger.info(f"Killing process with pid: {pid}")
+        logger.info(f"Killing process with pid: {pid}")
         subprocess.Popen(["sudo", "kill", "-9", str(pid)])
         self.peer_relation.remove_pid(pid)
         return pid
@@ -298,7 +300,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
     ):
         """Handle the creation of the command to launch producer or consumer."""
         if tls == "enabled" and self.peer_relation.app_data.private_key:
-            self.logger.info(f"TLS enabled -> bootstrap servers: {servers}")
+            logger.info(f"TLS enabled -> bootstrap servers: {servers}")
             servers = servers.replace("9092", "9093")
 
         cmd = (
@@ -343,7 +345,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
         )
 
         if isinstance(parsed, ValidationError):
-            self.logger.error(f"There was a problem to read {KAFKA_CLUSTER} databag: {parsed}")
+            logger.error(f"There was a problem to read {KAFKA_CLUSTER} databag: {parsed}")
 
         return parsed if isinstance(parsed, KafkaProviderRelationDataBag) else None
 
@@ -360,7 +362,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
         )
 
         if isinstance(parsed, ValidationError):
-            self.logger.error(f"There was a problem to read {DATABASE} databag: {parsed}")
+            logger.error(f"There was a problem to read {DATABASE} databag: {parsed}")
 
         return parsed if isinstance(parsed, MongoProviderRelationDataBag) else None
 
@@ -384,7 +386,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
 
     def _on_database_created(self, event: DatabaseCreatedEvent):
         """Handle the database created event."""
-        self.logger.info(
+        logger.info(
             f"Database successfully created: {self.config.topic_name} with username: {event.username}"
         )
 
@@ -402,12 +404,12 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
     def _on_kafka_bootstrap_server_changed(self, event: BootstrapServerChangedEvent):
         """Handle the bootstrap server changed."""
         # Event triggered when a bootstrap server was changed for this application
-        self.logger.info(f"Bootstrap servers changed into: {event.bootstrap_server}")
+        logger.info(f"Bootstrap servers changed into: {event.bootstrap_server}")
 
     def _on_kafka_topic_created(self, event: TopicCreatedEvent):
         """Handle the topic created event."""
         # Event triggered when a topic was created for this application
-        self.logger.info(
+        logger.info(
             f"Topic successfully created: {self.config.topic_name} with username: {event.username}"
         )
 
@@ -426,7 +428,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
         consumer_group_prefix = (
             self.kafka_relation_data.consumer_group_prefix or self.config.consumer_group_prefix
         )
-        self.logger.info(f"app: {app_type} : {type(app_type)}")
+        logger.info(f"app: {app_type} : {type(app_type)}")
         pid = self._start_process(
             process_type=app_type,
             username=username,
@@ -439,7 +441,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
             certfile_path=CERT_FILE_PATH,
             keyfile_path=KEY_FILE_PATH,
         )
-        self.logger.info(f"Auto-Started {app_type} process with pid: {pid}")
+        logger.info(f"Auto-Started {app_type} process with pid: {pid}")
 
         self.unit.status = self.get_status()
 
@@ -447,7 +449,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
         """Handle the relation broken event."""
         pid = self.peer_relation.unit_data.pid
         assert pid
-        self.logger.info(f"Stopping process: {pid}")
+        logger.info(f"Stopping process: {pid}")
         self._stop_process(pid)
         if self.unit.is_leader():
             self.peer_relation.set_topic("")
@@ -455,7 +457,7 @@ class KafkaAppCharm(TypedCharmBase[CharmConfig], WithLogging):
 
     def _on_config_changed(self, _):
         """Handle the on configuration changed hook."""
-        self.logger.info(f"Configuration changed to {','.join(self.config.app_type)}")
+        logger.info(f"Configuration changed to {','.join(self.config.app_type)}")
         self.unit.status = self.get_status()
 
     def _on_install(self, _):

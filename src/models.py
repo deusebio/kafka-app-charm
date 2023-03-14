@@ -6,7 +6,6 @@ from enum import Enum
 from typing import List, Optional
 
 from charms.data_platform_libs.v0.data_models import RelationDataModel
-from charms.logging.v0.classes import WithLogging
 from pydantic import BaseModel, ValidationError, validator
 
 
@@ -17,7 +16,7 @@ class AppType(str, Enum):
     CONSUMER = "consumer"
 
 
-class CharmConfig(BaseModel, WithLogging):
+class CharmConfig(BaseModel):
     """Charmed configuration class."""
 
     topic_name: str
@@ -32,7 +31,6 @@ class CharmConfig(BaseModel, WithLogging):
     def _role_parser(cls, value: str):
         """Handle the parsing of the role."""
         try:
-            # self.logger.info(roles)
             _app_type = AppType(value)
         except Exception as e:
             raise ValidationError(f"could not properly parsed the roles configuration: {e}")
@@ -42,9 +40,6 @@ class CharmConfig(BaseModel, WithLogging):
     def app_type(self) -> AppType:
         """Return the Kafka app type (producer or consumer)."""
         return AppType(self.role)
-
-    # class Config:
-    #     use_enum_values = True  # <--
 
 
 class StartConsumerParam(BaseModel):
